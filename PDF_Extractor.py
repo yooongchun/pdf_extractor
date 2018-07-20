@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import importlib
+import threading
 
 importlib.reload(sys)
 from pdfminer.pdfparser import PDFParser, PDFDocument
@@ -124,7 +125,7 @@ def matchKeyWords(txt_folder, excel_path, keyWords, year):
         sheet_copy.write(index + 1, 0, year)
         sheet_copy.write(index + 1, 1, stock_num)
         sheet_copy.write(index + 1, 2, pdf_name)
-    copy_book.save(excel_path +"."+year + ".xls")
+    copy_book.save(excel_path + "." + year + ".xls")
 
 
 if __name__ == '__main__':
@@ -172,21 +173,40 @@ if __name__ == '__main__':
                 print("valid files:%d" % len(pdf_files))
                 pdf_to_txt_path = ""
                 count = 0
+                cnt_thread = 0
+                thread_list = []
                 for key, value in pdf_files.items():
                     count += 1
-                    print("parser PDF file:%s  %d/%d" % (key, count, len(pdf_files)))
+                    cnt_thread += 1
                     one_pdf_path = value[1]  # 绝对路径
                     stock_num = value[0]  # 股票代码
-                    pdf_to_txt_path = one_pdf_path + ".txt"  # txt路径
-                    parsePDF(one_pdf_path, pdf_to_txt_path)
+                    pdf_to_txt_path = os.path.splitext(one_pdf_path)[0] + ".txt"  # txt路径
+                    try:
+                        if not os.path.isfile(pdf_to_txt_path):
+                            if cnt_thread < 100:
+                                print("launch thread:%d" % cnt_thread)
+                                my_thread = threading.Thread(target=parsePDF, args=(one_pdf_path, pdf_to_txt_path))
+                                thread_list.append(my_thread)
+                                my_thread.start()
+                                print("parse PDF file:%s  %d/%d" % (key, count, len(pdf_files)))
+                            else:
+                                cnt_thread = 0
+                                for my_thread in thread_list:
+                                    print("wait thread:%s" % my_thread)
+                                    my_thread.join()
+                        if count == len(pdf_files):
+                            cnt_thread = 0
+                            for my_thread in thread_list:
+                                print("wait thread:%s" % my_thread)
+                                my_thread.join()
+                        # parsePDF(one_pdf_path, pdf_to_txt_path)
+                    except:
+                        print("parse pdf error,continue...")
+                        continue
                     if REAL_TIME_SHOW:
                         print("match keywords...")
                         matchKeyWords(pdf_path, keyWords_path, key_words, folder)
                 if not REAL_TIME_SHOW:
                     print("match keywords...")
                     matchKeyWords(pdf_path, keyWords_path, key_words, folder)
-                print("remove temp txt file")
-                for file in pdf_path:
-                    if file.split(".")[-1] == "txt":
-                        os.remove(os.path.join(pdf_folder, file))
         print("done!")
